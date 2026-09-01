@@ -56,6 +56,7 @@ const I18N = {
     currentPasswordError: "当前密码错误",
     passwordChanged: "密码已更改成功",
     emailNotFound: "404 - 邮件未找到",
+    searchPh: "搜索发件人、收件人、主题",
     blacklist: "黑名单",
     titleBlacklist: "黑名单管理",
     addRule: "添加规则",
@@ -75,6 +76,8 @@ const I18N = {
     ruleDeleted: "规则已删除",
     confirmDeleteRule: "确认删除此规则？",
     allConditionsMatch: "满足全部条件时拦截",
+    filteredEmails: "被排除的邮件",
+    noFilteredEmails: "没有被排除的邮件",
   },
   "zh-TW": {
     htmlLang: "zh-TW",
@@ -130,6 +133,7 @@ const I18N = {
     currentPasswordError: "目前密碼錯誤",
     passwordChanged: "密碼已更改成功",
     emailNotFound: "404 - 郵件未找到",
+    searchPh: "搜尋發件人、收件人、主旨",
     blacklist: "黑名單",
     titleBlacklist: "黑名單管理",
     addRule: "新增規則",
@@ -149,6 +153,8 @@ const I18N = {
     ruleDeleted: "規則已刪除",
     confirmDeleteRule: "確認刪除此規則？",
     allConditionsMatch: "滿足全部條件時攔截",
+    filteredEmails: "被排除的郵件",
+    noFilteredEmails: "沒有被排除的郵件",
   },
   "en": {
     htmlLang: "en",
@@ -204,6 +210,7 @@ const I18N = {
     currentPasswordError: "Current password is incorrect",
     passwordChanged: "Password changed successfully",
     emailNotFound: "404 - Email not found",
+    searchPh: "Search sender, recipient, subject",
     blacklist: "Blacklist",
     titleBlacklist: "Blacklist",
     addRule: "Add Rule",
@@ -223,6 +230,8 @@ const I18N = {
     ruleDeleted: "Rule deleted",
     confirmDeleteRule: "Delete this rule?",
     allConditionsMatch: "Block when all conditions match",
+    filteredEmails: "Filtered emails",
+    noFilteredEmails: "No filtered emails",
   },
 };
 
@@ -664,7 +673,7 @@ body { display: flex; align-items: center; justify-content: center; min-height: 
 </html>`;
 }
 
-function renderListPage(lang, emails, page, totalPages) {
+function renderListPage(lang, emails, page, totalPages, searchQuery) {
   const t = I18N[lang] || I18N["en"];
   const rows = emails.length === 0
     ? `<tr class="empty-row"><td colspan="5"><div style="text-align:center;padding:48px 20px;color:var(--text-secondary);"><i class="fas fa-inbox" style="font-size:36px;margin-bottom:12px;display:block;"></i>${t.noMails}</div></td></tr>`
@@ -714,8 +723,8 @@ tr.unread .subject { font-weight: 600; }
 .filter-toggle span i { color: var(--text-secondary); margin-right: 6px; }
 .filter-toggle .arrow { transition: transform 0.2s; color: var(--text-secondary); }
 .filter-toggle.open .arrow { transform: rotate(180deg); }
-.filter-content { display: none; padding: 14px 16px; border-top: 1px solid var(--border); }
-.filter-content.open { display: block; }
+.filter-content { max-height: 0; overflow: hidden; padding: 0 16px; border-top: 1px solid transparent; transition: max-height 0.3s ease-out, padding 0.3s ease-out, border-top-color 0.3s ease-out; }
+.filter-content.open { max-height: 500px; padding: 14px 16px; border-top-color: var(--border); }
 .filter-tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .filter-group { margin-bottom: 10px; }
 .filter-group:last-child { margin-bottom: 0; }
@@ -727,16 +736,22 @@ tr.unread .subject { font-weight: 600; }
 .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; }
 .pagination a.disabled { opacity: 0.4; pointer-events: none; }
 .pagination .current { color: var(--text-secondary); font-size: 13px; padding: 0 8px; }
+.search-form { display: flex; align-items: center; flex: 0 1 260px; position: relative; margin: 0 4px; }
+.search-form .search-icon { position: absolute; left: 10px; color: var(--text-tertiary); font-size: 13px; pointer-events: none; }
+.search-input { width: 100%; padding: 7px 12px 7px 32px; font-size: 13px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface); color: var(--text); outline: none; font-family: var(--font); transition: border-color 0.15s, box-shadow 0.15s; -webkit-appearance: none; }
+.search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+.search-input::placeholder { color: var(--text-tertiary); }
 @media (max-width: 768px) {
   .header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
   .header h1 { font-size: 16px; }
+  .header .sub { display: none; }
   .container { padding: 14px 10px; }
   .to, th:nth-child(3) { display: none; }
   td, th { padding: 10px 12px; }
+  .search-form { flex: 1 0 100%; max-width: none; margin: 0; order: 10; }
+  .search-input { font-size: 16px; }
 }
 @media (max-width: 480px) {
-  .header { flex-direction: column; align-items: flex-start; }
-  .header .actions { width: 100%; justify-content: flex-end; }
   thead { display: none; }
   table, tbody { display: block; width: 100%; }
   .table-wrap { box-shadow: none; background: transparent; border: none; padding: 0; }
@@ -760,6 +775,10 @@ tr.unread .subject { font-weight: 600; }
     <h1><i class="fas fa-envelope"></i>${t.brand}</h1>
     <div class="sub"><i class="fas fa-inbox" style="margin-right:4px;"></i>${t.totalMails.replace("{n}", emails.length)}</div>
   </div>
+  <form class="search-form" method="GET" action="/">
+    <i class="fas fa-search search-icon"></i>
+    <input type="text" name="q" class="search-input" placeholder="${t.searchPh}" value="${escapeHtml(searchQuery || '')}">
+  </form>
   <div class="actions">
     ${langSwitcher(lang)}
     <a href="/blacklist" class="neu-btn icon-only" title="${t.blacklist}"><i class="fas fa-ban"></i></a>
@@ -816,9 +835,9 @@ tr.unread .subject { font-weight: 600; }
   </div>
   ${totalPages > 1 ? `
   <div class="pagination">
-    <a href="/?page=${page - 1}" class="neu-btn ${page <= 1 ? 'disabled' : ''}"><i class="fas fa-chevron-left"></i> ${t.prevPage}</a>
+    <a href="/?page=${page - 1}${searchQuery ? '&q=' + encodeURIComponent(searchQuery) : ''}" class="neu-btn ${page <= 1 ? 'disabled' : ''}"><i class="fas fa-chevron-left"></i> ${t.prevPage}</a>
     <span class="current">${page} / ${totalPages}</span>
-    <a href="/?page=${page + 1}" class="neu-btn ${page >= totalPages ? 'disabled' : ''}">${t.nextPage} <i class="fas fa-chevron-right"></i></a>
+    <a href="/?page=${page + 1}${searchQuery ? '&q=' + encodeURIComponent(searchQuery) : ''}" class="neu-btn ${page >= totalPages ? 'disabled' : ''}">${t.nextPage} <i class="fas fa-chevron-right"></i></a>
   </div>` : ""}
 </div>
 <script>
@@ -1040,7 +1059,7 @@ ${COMMON}
 </html>`;
 }
 
-function renderBlacklistPage(lang, rules, error, success) {
+function renderBlacklistPage(lang, rules, filteredEmails, error, success) {
   const t = I18N[lang] || I18N["en"];
   const fl = { from_domain: t.fromDomain, from_name: t.fromName, from_email: t.fromEmail, to_domain: t.toDomain, to_name: t.toName, to_email: t.toEmail, subject: t.subjectContent };
   const ol = { contains: t.contains, equals: t.equals };
@@ -1082,6 +1101,15 @@ ${COMMON}
 .cond-field, .cond-op { width: auto !important; min-width: 130px; flex: 0 0 auto; }
 .cond-value { flex: 1; }
 .rule-actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+.filtered-section { margin-top: 20px; }
+.section-title { font-size: 16px; color: var(--text); margin-bottom: 12px; font-weight: 600; }
+.section-title i { color: var(--accent); margin-right: 6px; }
+.filtered-empty { text-align: center; padding: 32px 20px; color: var(--text-secondary); font-size: 13px; }
+.filtered-item { display: flex; flex-wrap: wrap; align-items: center; padding: 12px 16px; border-radius: var(--r-sm); background: var(--surface); box-shadow: var(--shadow-sm); border: 1px solid var(--border); margin-bottom: 8px; transition: background 0.15s; text-decoration: none; }
+.filtered-item:hover { background: var(--surface-hover); }
+.fi-from { flex: 0 1 60%; font-size: 13px; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fi-date { flex: 0 0 40%; text-align: right; font-size: 11px; color: var(--text-secondary); }
+.fi-subject { flex: 1 0 100%; font-size: 13px; color: var(--text-secondary); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) {
   .header { padding: 12px 16px; }
   .container { padding: 14px 10px; }
@@ -1122,6 +1150,16 @@ ${COMMON}
         <button type="button" class="neu-btn neu-btn-accent" onclick="submitRule()"><i class="fas fa-save"></i> ${t.addRule}</button>
       </div>
     </form>
+  </div>
+  <div class="filtered-section">
+    <h2 class="section-title"><i class="fas fa-eye-slash"></i> ${t.filteredEmails}</h2>
+    ${filteredEmails.length === 0
+      ? `<div class="filtered-empty">${t.noFilteredEmails}</div>`
+      : filteredEmails.map(e => `<a href="/email/${e.id}" class="filtered-item">
+      <div class="fi-from">${escapeHtml(cleanDisplayName(e.from || ''))}</div>
+      <div class="fi-date">${formatDate(e.date, lang)}</div>
+      <div class="fi-subject">${escapeHtml(e.subject || t.noSubject)}</div>
+    </a>`).join("")}
   </div>
 </div>
 <script>
@@ -1179,9 +1217,6 @@ export default {
       ts: Date.now()
     };
 
-    const blacklist = await getBlacklist(env);
-    if (matchBlacklist(emailData, blacklist)) return;
-
     await env.EMAILS.put(`email:${id}`, JSON.stringify(emailData));
     await env.EMAILS.put("counter", id);
 
@@ -1229,7 +1264,9 @@ export default {
      if (path === "/blacklist") {
        if (request.method === "POST") return redirect("/blacklist");
        const rules = await getBlacklist(env);
-       return html(renderBlacklistPage(lang, rules));
+       const index = JSON.parse((await env.EMAILS.get("index")) || "[]");
+       const filtered = rules.length > 0 ? index.filter(e => matchBlacklist(e, rules)) : [];
+       return html(renderBlacklistPage(lang, rules, filtered));
      }
 
      if (path === "/blacklist/add") {
@@ -1241,7 +1278,9 @@ export default {
        const rules = await getBlacklist(env);
        rules.push({ id: Date.now().toString(), conditions, created_at: Date.now() });
        await saveBlacklist(env, rules);
-       return html(renderBlacklistPage(lang, rules, null, I18N[lang].ruleSaved));
+       const index = JSON.parse((await env.EMAILS.get("index")) || "[]");
+       const filtered = rules.length > 0 ? index.filter(e => matchBlacklist(e, rules)) : [];
+       return html(renderBlacklistPage(lang, rules, filtered, null, I18N[lang].ruleSaved));
      }
 
      if (path.startsWith("/blacklist/delete/")) {
@@ -1250,7 +1289,9 @@ export default {
        const rules = await getBlacklist(env);
        const updated = rules.filter(r => r.id !== ruleId);
        await saveBlacklist(env, updated);
-       return html(renderBlacklistPage(lang, updated, null, I18N[lang].ruleDeleted));
+       const index = JSON.parse((await env.EMAILS.get("index")) || "[]");
+       const filtered = updated.length > 0 ? index.filter(e => matchBlacklist(e, updated)) : [];
+       return html(renderBlacklistPage(lang, updated, filtered, null, I18N[lang].ruleDeleted));
      }
 
      if (path === "/settings/password") {
@@ -1359,12 +1400,17 @@ export default {
     }
 
     const page = Math.max(1, parseInt(url.searchParams.get("page")) || 1);
+    const q = url.searchParams.get("q") || "";
     const perPage = 20;
     const index = JSON.parse((await env.EMAILS.get("index")) || "[]");
     const blacklist = await getBlacklist(env);
-    const filtered = blacklist.length > 0 ? index.filter(e => !matchBlacklist(e, blacklist)) : index;
+    let filtered = blacklist.length > 0 ? index.filter(e => !matchBlacklist(e, blacklist)) : index;
+    if (q) {
+      const ql = q.toLowerCase();
+      filtered = filtered.filter(e => (e.from || "").toLowerCase().includes(ql) || (e.to || "").toLowerCase().includes(ql) || (e.subject || "").toLowerCase().includes(ql));
+    }
     const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
     const paged = filtered.slice((page - 1) * perPage, page * perPage);
-    return html(renderListPage(lang, paged, page, totalPages));
+    return html(renderListPage(lang, paged, page, totalPages, q));
   }
 };
