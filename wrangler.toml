@@ -1,0 +1,10 @@
+name = "email-worker"
+main = "src/index.js"
+compatibility_date = "2025-04-01"
+
+[vars]
+PASSWORD = "changeme"
+
+[[kv_namespaces]]
+binding = "EMAILS"
+id = "your-kv-namespace-id"
