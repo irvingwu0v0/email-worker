@@ -56,6 +56,25 @@ const I18N = {
     currentPasswordError: "当前密码错误",
     passwordChanged: "密码已更改成功",
     emailNotFound: "404 - 邮件未找到",
+    blacklist: "黑名单",
+    titleBlacklist: "黑名单管理",
+    addRule: "添加规则",
+    addCondition: "添加条件",
+    removeCondition: "移除",
+    fromDomain: "发件域名",
+    fromName: "发件名(@前)",
+    fromEmail: "发件邮箱",
+    toDomain: "收件域名",
+    toName: "收件名(@前)",
+    toEmail: "收件邮箱",
+    subjectContent: "主题",
+    contains: "包含",
+    equals: "等于",
+    noRules: "暂无黑名单规则",
+    ruleSaved: "规则已添加",
+    ruleDeleted: "规则已删除",
+    confirmDeleteRule: "确认删除此规则？",
+    allConditionsMatch: "满足全部条件时拦截",
   },
   "zh-TW": {
     htmlLang: "zh-TW",
@@ -111,6 +130,25 @@ const I18N = {
     currentPasswordError: "目前密碼錯誤",
     passwordChanged: "密碼已更改成功",
     emailNotFound: "404 - 郵件未找到",
+    blacklist: "黑名單",
+    titleBlacklist: "黑名單管理",
+    addRule: "新增規則",
+    addCondition: "新增條件",
+    removeCondition: "移除",
+    fromDomain: "發件域名",
+    fromName: "發件名(@前)",
+    fromEmail: "發件郵箱",
+    toDomain: "收件域名",
+    toName: "收件名(@前)",
+    toEmail: "收件郵箱",
+    subjectContent: "主旨",
+    contains: "包含",
+    equals: "等於",
+    noRules: "暫無黑名單規則",
+    ruleSaved: "規則已新增",
+    ruleDeleted: "規則已刪除",
+    confirmDeleteRule: "確認刪除此規則？",
+    allConditionsMatch: "滿足全部條件時攔截",
   },
   "en": {
     htmlLang: "en",
@@ -166,6 +204,25 @@ const I18N = {
     currentPasswordError: "Current password is incorrect",
     passwordChanged: "Password changed successfully",
     emailNotFound: "404 - Email not found",
+    blacklist: "Blacklist",
+    titleBlacklist: "Blacklist",
+    addRule: "Add Rule",
+    addCondition: "Add Condition",
+    removeCondition: "Remove",
+    fromDomain: "Sender Domain",
+    fromName: "Sender Name",
+    fromEmail: "Sender Email",
+    toDomain: "Recipient Domain",
+    toName: "Recipient Name",
+    toEmail: "Recipient Email",
+    subjectContent: "Subject",
+    contains: "Contains",
+    equals: "Equals",
+    noRules: "No blacklist rules",
+    ruleSaved: "Rule added",
+    ruleDeleted: "Rule deleted",
+    confirmDeleteRule: "Delete this rule?",
+    allConditionsMatch: "Block when all conditions match",
   },
 };
 
@@ -372,6 +429,56 @@ function extractEmail(str) {
   return m ? m[1] : str;
 }
 
+function cleanDisplayName(str) {
+  return String(str).replace(/"/g, '');
+}
+
+function extractEmailParts(str) {
+  const s = String(str);
+  const m = s.match(/<([^>]+)>/);
+  const email = m ? m[1] : (s.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/) || [""])[0];
+  const domain = email.split("@")[1] || "";
+  const local = email.split("@")[0] || "";
+  return { email, domain, local };
+}
+
+async function getBlacklist(env) {
+  return JSON.parse((await env.EMAILS.get("config:blacklist")) || "[]");
+}
+
+async function saveBlacklist(env, rules) {
+  await env.EMAILS.put("config:blacklist", JSON.stringify(rules));
+}
+
+function matchBlacklist(email, rules) {
+  if (!rules || rules.length === 0) return false;
+  const fromParts = extractEmailParts(email.from || "");
+  const toParts = extractEmailParts(email.to || "");
+  for (const rule of rules) {
+    if (!rule.conditions || rule.conditions.length === 0) continue;
+    let allMatch = true;
+    for (const cond of rule.conditions) {
+      let fv = "";
+      switch (cond.field) {
+        case "from_domain": fv = fromParts.domain; break;
+        case "from_name": fv = fromParts.local; break;
+        case "from_email": fv = fromParts.email; break;
+        case "to_domain": fv = toParts.domain; break;
+        case "to_name": fv = toParts.local; break;
+        case "to_email": fv = toParts.email; break;
+        case "subject": fv = email.subject || ""; break;
+      }
+      if (cond.op === "equals") {
+        if (fv.toLowerCase() !== String(cond.value).toLowerCase()) { allMatch = false; break; }
+      } else {
+        if (!fv.toLowerCase().includes(String(cond.value).toLowerCase())) { allMatch = false; break; }
+      }
+    }
+    if (allMatch) return true;
+  }
+  return false;
+}
+
 function formatDate(dateStr, lang) {
   try {
     const d = new Date(dateStr);
@@ -565,8 +672,8 @@ function renderListPage(lang, emails, page, totalPages) {
         const unread = !e.read;
         return `<tr data-id="${e.id}" class="${unread ? 'unread' : ''}">
       <td class="chk" onclick="event.stopPropagation()"><input type="checkbox" class="email-chk" value="${e.id}"></td>
-      <td class="from" onclick="location.href='/email/${e.id}'">${unread ? '<span class="dot"></span>' : ''}${escapeHtml(e.from || '')}</td>
-      <td class="to" onclick="location.href='/email/${e.id}'">${escapeHtml(e.to || '')}</td>
+      <td class="from" onclick="location.href='/email/${e.id}'">${unread ? '<span class="dot"></span>' : ''}${escapeHtml(cleanDisplayName(e.from || ''))}</td>
+      <td class="to" onclick="location.href='/email/${e.id}'">${escapeHtml(cleanDisplayName(e.to || ''))}</td>
       <td class="subject" onclick="location.href='/email/${e.id}'">${unread ? '<b>' : ''}${escapeHtml(e.subject || t.noSubject)}${unread ? '</b>' : ''}</td>
       <td class="date" onclick="location.href='/email/${e.id}'">${formatDate(e.date, lang)}</td>
     </tr>`;
@@ -655,6 +762,7 @@ tr.unread .subject { font-weight: 600; }
   </div>
   <div class="actions">
     ${langSwitcher(lang)}
+    <a href="/blacklist" class="neu-btn icon-only" title="${t.blacklist}"><i class="fas fa-ban"></i></a>
     <a href="/settings" class="neu-btn icon-only" title="${t.settingsTitle}"><i class="fas fa-cog"></i></a>
     <a href="/" class="neu-btn icon-only" title="${t.refresh}"><i class="fas fa-sync-alt"></i></a>
     <form method="POST" action="/logout" style="display:inline">
@@ -834,9 +942,9 @@ window.addEventListener('message',function(e){var f=document.getElementById('ema
 <div class="container">
   <div class="card">
     <div class="detail-bar">
-      <span class="item"><i class="fas fa-user"></i> ${escapeHtml(email.from)}</span>
+      <span class="item"><i class="fas fa-user"></i> ${escapeHtml(cleanDisplayName(email.from))}</span>
       <span class="item"><i class="fas fa-clock"></i> ${formatDate(email.date, lang)}</span>
-      <span class="item"><i class="fas fa-at"></i> ${escapeHtml(email.to)}</span>
+      <span class="item"><i class="fas fa-at"></i> ${escapeHtml(cleanDisplayName(email.to))}</span>
     </div>
     ${hasHtml
       ? `<div class="email-body-html"><iframe id="emailFrame" srcdoc="${escapeHtml(iframeContent).replace(/"/g, '&quot;')}" style="width:100%;border:none;display:block"></iframe></div>`
@@ -932,6 +1040,122 @@ ${COMMON}
 </html>`;
 }
 
+function renderBlacklistPage(lang, rules, error, success) {
+  const t = I18N[lang] || I18N["en"];
+  const fl = { from_domain: t.fromDomain, from_name: t.fromName, from_email: t.fromEmail, to_domain: t.toDomain, to_name: t.toName, to_email: t.toEmail, subject: t.subjectContent };
+  const ol = { contains: t.contains, equals: t.equals };
+  const fieldOpts = Object.keys(fl).map(k => `<option value="${k}">${fl[k]}</option>`).join("");
+  const opOpts = Object.keys(ol).map(k => `<option value="${k}">${ol[k]}</option>`).join("");
+  const ruleCards = rules.length === 0
+    ? `<div style="text-align:center;padding:40px 20px;color:var(--text-secondary);"><i class="fas fa-shield-alt" style="font-size:32px;margin-bottom:12px;display:block;"></i>${t.noRules}</div>`
+    : rules.map(r => `<div class="card rule-card">
+      <div class="rule-conditions">${r.conditions.map(c => `<div class="rule-cond"><span class="rule-field">${fl[c.field] || c.field}</span><span class="rule-op">${ol[c.op] || c.op}</span><span class="rule-val">${escapeHtml(c.value)}</span></div>`).join('<i class="fas fa-plus rule-sep" style="color:var(--text-tertiary);font-size:10px;"></i>')}</div>
+      <form method="POST" action="/blacklist/delete/${r.id}" onsubmit="return confirm(${JSON.stringify(t.confirmDeleteRule)})" style="display:inline;flex-shrink:0;">
+        <button type="submit" class="neu-btn neu-btn-danger icon-only"><i class="fas fa-times"></i></button>
+      </form>
+    </div>`).join("");
+  return `<!DOCTYPE html>
+<html lang="${t.htmlLang}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${t.titleBlacklist}</title>
+${COMMON}
+<style>
+.header { background: var(--header-bg); backdrop-filter: var(--header-blur); -webkit-backdrop-filter: var(--header-blur); padding: 14px 24px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); animation: slideDown 0.25s ease-out; }
+.header h1 { font-size: 18px; color: var(--text); flex: 1; font-weight: 600; letter-spacing: -0.01em; }
+.header h1 i { color: var(--accent); margin-right: 8px; }
+.container { max-width: 700px; margin: 0 auto; padding: 20px 16px; animation: fadeUp 0.3s ease-out; }
+.card { border-radius: var(--r); background: var(--surface); box-shadow: var(--shadow-md); border: 1px solid var(--border); margin-bottom: 12px; }
+.rule-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; }
+.rule-conditions { flex: 1; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.rule-cond { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+.rule-field { color: var(--accent); font-weight: 500; }
+.rule-op { color: var(--text-secondary); font-size: 12px; }
+.rule-val { color: var(--text); }
+.rule-sep { margin: 0 2px; }
+.add-card { padding: 24px 20px; }
+.add-card h2 { font-size: 16px; color: var(--text); margin-bottom: 6px; font-weight: 600; }
+.add-card h2 i { color: var(--accent); margin-right: 6px; }
+.add-card .hint { font-size: 12px; color: var(--text-secondary); margin-bottom: 18px; }
+.condition-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+.cond-field, .cond-op { width: auto !important; min-width: 130px; flex: 0 0 auto; }
+.cond-value { flex: 1; }
+.rule-actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .header { padding: 12px 16px; }
+  .container { padding: 14px 10px; }
+  .card { border-radius: var(--r-sm); }
+  .rule-card { padding: 12px 14px; }
+  .add-card { padding: 18px 14px; }
+  .condition-row { flex-wrap: wrap; }
+  .cond-field, .cond-op { min-width: 0; flex: 1 1 45%; }
+  .cond-value { flex: 1 0 100%; }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <a href="/" class="neu-btn"><i class="fas fa-arrow-left"></i> ${t.backToList}</a>
+  <h1><i class="fas fa-ban"></i> ${t.titleBlacklist}</h1>
+  ${langSwitcher(lang)}
+</div>
+<div class="container">
+  ${error ? `<div class="neu-alert neu-alert-error"><i class="fas fa-exclamation-circle"></i> ${escapeHtml(error)}</div>` : ""}
+  ${success ? `<div class="neu-alert neu-alert-success"><i class="fas fa-check-circle"></i> ${escapeHtml(success)}</div>` : ""}
+  ${ruleCards}
+  <div class="card add-card">
+    <h2><i class="fas fa-plus-circle"></i> ${t.addRule}</h2>
+    <p class="hint"><i class="fas fa-info-circle" style="margin-right:4px;"></i>${t.allConditionsMatch}</p>
+    <form id="ruleForm" method="POST" action="/blacklist/add">
+      <input type="hidden" name="conditions" id="conditionsJson">
+      <div id="conditionsContainer">
+        <div class="condition-row">
+          <select name="field" class="neu-input cond-field">${fieldOpts}</select>
+          <select name="op" class="neu-input cond-op">${opOpts}</select>
+          <input type="text" name="value" class="neu-input cond-value" placeholder="${t.value}" required>
+          <button type="button" class="neu-btn neu-btn-danger icon-only" onclick="removeCondition(this)"><i class="fas fa-times"></i></button>
+        </div>
+      </div>
+      <div class="rule-actions">
+        <button type="button" class="neu-btn" onclick="addCondition()"><i class="fas fa-plus"></i> ${t.addCondition}</button>
+        <button type="button" class="neu-btn neu-btn-accent" onclick="submitRule()"><i class="fas fa-save"></i> ${t.addRule}</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+var fieldOpts = ${JSON.stringify(fieldOpts)};
+var opOpts = ${JSON.stringify(opOpts)};
+function addCondition() {
+  var c = document.getElementById('conditionsContainer');
+  var row = document.createElement('div');
+  row.className = 'condition-row';
+  row.innerHTML = '<select name="field" class="neu-input cond-field">' + fieldOpts + '</select><select name="op" class="neu-input cond-op">' + opOpts + '</select><input type="text" name="value" class="neu-input cond-value" placeholder="${t.value}" required><button type="button" class="neu-btn neu-btn-danger icon-only" onclick="removeCondition(this)"><i class="fas fa-times"></i></button>';
+  c.appendChild(row);
+}
+function removeCondition(btn) {
+  var c = document.getElementById('conditionsContainer');
+  if (c.children.length > 1) btn.closest('.condition-row').remove();
+}
+function submitRule() {
+  var rows = document.querySelectorAll('.condition-row');
+  var conditions = [];
+  for (var i = 0; i < rows.length; i++) {
+    var f = rows[i].querySelector('[name="field"]').value;
+    var o = rows[i].querySelector('[name="op"]').value;
+    var v = rows[i].querySelector('[name="value"]').value;
+    if (f && o && v) conditions.push({field: f, op: o, value: v});
+  }
+  if (conditions.length === 0) return;
+  document.getElementById('conditionsJson').value = JSON.stringify(conditions);
+  document.getElementById('ruleForm').submit();
+}
+</script>
+</body>
+</html>`;
+}
+
 export default {
   async email(message, env, ctx) {
     const rawBytes = await new Response(message.raw).arrayBuffer();
@@ -954,6 +1178,9 @@ export default {
       read: false,
       ts: Date.now()
     };
+
+    const blacklist = await getBlacklist(env);
+    if (matchBlacklist(emailData, blacklist)) return;
 
     await env.EMAILS.put(`email:${id}`, JSON.stringify(emailData));
     await env.EMAILS.put("counter", id);
@@ -997,6 +1224,33 @@ export default {
          return redirect("/settings");
        }
        return html(renderSettingsPage(lang));
+     }
+
+     if (path === "/blacklist") {
+       if (request.method === "POST") return redirect("/blacklist");
+       const rules = await getBlacklist(env);
+       return html(renderBlacklistPage(lang, rules));
+     }
+
+     if (path === "/blacklist/add") {
+       if (request.method !== "POST") return redirect("/blacklist");
+       const form = await request.formData();
+       let conditions;
+       try { conditions = JSON.parse(form.get("conditions")); } catch { conditions = []; }
+       if (!Array.isArray(conditions) || conditions.length === 0) return redirect("/blacklist");
+       const rules = await getBlacklist(env);
+       rules.push({ id: Date.now().toString(), conditions, created_at: Date.now() });
+       await saveBlacklist(env, rules);
+       return html(renderBlacklistPage(lang, rules, null, I18N[lang].ruleSaved));
+     }
+
+     if (path.startsWith("/blacklist/delete/")) {
+       if (request.method !== "POST") return redirect("/blacklist");
+       const ruleId = path.replace("/blacklist/delete/", "");
+       const rules = await getBlacklist(env);
+       const updated = rules.filter(r => r.id !== ruleId);
+       await saveBlacklist(env, updated);
+       return html(renderBlacklistPage(lang, updated, null, I18N[lang].ruleDeleted));
      }
 
      if (path === "/settings/password") {
@@ -1107,8 +1361,10 @@ export default {
     const page = Math.max(1, parseInt(url.searchParams.get("page")) || 1);
     const perPage = 20;
     const index = JSON.parse((await env.EMAILS.get("index")) || "[]");
-    const totalPages = Math.max(1, Math.ceil(index.length / perPage));
-    const paged = index.slice((page - 1) * perPage, page * perPage);
+    const blacklist = await getBlacklist(env);
+    const filtered = blacklist.length > 0 ? index.filter(e => !matchBlacklist(e, blacklist)) : index;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+    const paged = filtered.slice((page - 1) * perPage, page * perPage);
     return html(renderListPage(lang, paged, page, totalPages));
   }
 };
